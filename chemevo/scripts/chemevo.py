@@ -47,15 +47,13 @@ class chem_evo_data:
         self.Mgas = np.dstack(data['Mgas'][()])[0]
         if 'Mgas_warm' in data.keys():
             self.Mgas_warm = np.dstack(data['Mgas_warm'][()])[0]
-        if 'rSFR' in data.keys():
-            self.rSFR = np.dstack(data['rSFR'][()])[0]
         self.Mstar = np.dstack(data['Mstar'][()])[0]
         self.Z = np.dstack(data['Z'][()])[0]
         self.SFR = data['SFR'][()][0].T
         self.Inflow = data['Inflow'][()][0].T
         self.SNIa = data['SNIa'][()][0].T
         self.SNII = data['SNII'][()][0].T
-        self.elements = [i for i in data.keys() if i not in ['R','t','Mgas','Z','parameters','SFR','Inflow','SNIa','SNII','Mstar','Mgas_warm','rSFR']]
+        self.elements = [i for i in data.keys() if i not in ['R','t','Mgas','Z','parameters','SFR','Inflow','SNIa','SNII','Mstar','Mgas_warm']]
         for e in self.elements:
             if e in Alpha_Elements:
                 self.elements += [u'alpha']
@@ -98,7 +96,7 @@ class chem_evo_data:
             plt.annotate(r'$%0.3f/\mathrm{dex\,kpc}$'%(grad),xy=(0.95,0.95),xycoords='axes fraction',ha='right',va='top')
         plt.tight_layout()
 
-    def plot_radius_range(self,el,timerange=np.arange(0.1,12.1,1.),el2=None):
+    def plot_radius_range(self,el,timerange=np.arange(0.1,13.1,1.),el2=None):
         ''' Plots the radial distribution of element el for a range of times
             timerange. if el2 != None el-el2 is plotted '''
         for t in timerange:
@@ -130,6 +128,7 @@ class chem_evo_data:
     def plot_time_range(self,el,radiusrange=np.arange(1.,15.,1.),el2=None):
         ''' Plots the distribution in time of element el for a range of radii
             radiusrange. if el2 != None el-el2 is plotted '''
+	#Change radius range from 15.0 to 8.0 for Sausage galaxy
         for r in radiusrange:
             self.plot_time(el,el2,radius=r)
         self.plot_time(el,el2,radius=SolarRadius,color=sns.color_palette()[2])
@@ -158,7 +157,10 @@ class chem_evo_data:
         else:
             rbs = CubicSpline(self.t,dat[0])
             b = rbs(t)
-        plt.plot(a,b,color=color)
+        if len(self.R)>1:
+            plt.plot(a.T,b.T,color=color)
+        else:
+            plt.plot(a,b,color=color)
         if(el_u2):
             plt.ylabel(r'$[\mathrm{%s}/\mathrm{%s}]$'%(el2,el_u2))
         else:
@@ -225,26 +227,27 @@ class chem_evo_data:
             Portinari et al. (1998) (for the inflow)
             and Li et al. (2011) (for the SN rates)
         '''
-        plt.figure(figsize=[3.,4.])
+        plt.figure(figsize=[4.,5.])
         plt.subplot(2,1,1)
         plt.plot(self.t,self.SFR,color='k',label='SFR')
         l,=plt.plot(self.t,self.Inflow,color='k',ls='dashed',label='Inflow')
         l.set_dashes((2,1))
         plt.legend(loc='upper left', bbox_to_anchor=(0.1, 1.0))
-        plt.xlabel(r'$t/\,\mathrm{Gyr}$')
-        plt.ylabel(r'Rate /$\,\mathrm{M}_\odot\,\mathrm{pc}^{-2}\,\mathrm{Gyr}^{-1}$')
+        plt.xlabel(r'$t/\,\mathrm{Gyr}$',fontsize=12)
+        plt.ylabel(r'Rate /$\,\mathrm{M}_\odot\,\mathrm{pc}^{-2}\,\mathrm{Gyr}^{-1}$',fontsize=12)
         plt.ylim(0.,np.max(self.SFR)*1.4)
 
-        sfr = [6.,4.] # Guesten & Mezger et al. (1982)
+        #sfr = [6.,4.] # Guesten & Mezger et al. (1982)
+        sfr = [2.4,0.0]
         inf = [0.9,0.6] # Portinari et al. (1998)
-        plt.errorbar([11.8],[sfr[0]],yerr=[sfr[1]],color=sns.color_palette()[2],fmt='*',markersize=4)
-        plt.errorbar([11.8],[inf[0]],yerr=[inf[1]],color=sns.color_palette()[2],fmt='*',markersize=4)
+        plt.errorbar([13.7],[sfr[0]],yerr=[sfr[1]],color=sns.color_palette()[2],fmt='*',markersize=4)
+        #plt.errorbar([11.8],[inf[0]],yerr=[inf[1]],color=sns.color_palette()[2],fmt='*',markersize=4)
 
         ax=plt.twinx()
         plt.plot(self.t,self.SNIa,color='k',ls='dotted',label='SNIa')
         l,=plt.plot(self.t,self.SNII,color='k',ls='dashed',label='SNII')
         l.set_dashes((4,1))
-        plt.ylabel(r'Rate /$\,\mathrm{pc}^{-2}\,\mathrm{Gyr}^{-1}$')
+        plt.ylabel(r'Rate /$\,\mathrm{pc}^{-2}\,\mathrm{Gyr}^{-1}$',fontsize=12)
         plt.legend(loc='upper right', bbox_to_anchor=(0.9, 1.0))
         plt.ylim(0.,plt.ylim()[1]*1.4)
 
@@ -252,8 +255,8 @@ class chem_evo_data:
         typeIa = [0.54,0.11] # Li et al. (2011)
         ## Assuming 15kpc disc
         conv = 10./np.pi/15.**2
-        plt.errorbar([12.2],[typeIa[0]*conv],yerr=[typeIa[1]*conv],color=sns.color_palette()[1],fmt='o',markersize=2)
-        plt.errorbar([12.2],[typeII[0]*conv],yerr=[typeII[1]*conv],color=sns.color_palette()[1],fmt='o',markersize=2)
+        plt.errorbar([13.7],[typeIa[0]*conv],yerr=[typeIa[1]*conv],color=sns.color_palette()[1],fmt='o',markersize=2)
+        plt.errorbar([13.7],[typeII[0]*conv],yerr=[typeII[1]*conv],color=sns.color_palette()[1],fmt='o',markersize=2)
         plt.xlim(0.,self.t[-1]*1.05)
         plt.subplot(2,1,2)
         plt.plot(self.R,self.Mstar[-1],color='k',label='Stars')
@@ -263,9 +266,10 @@ class chem_evo_data:
         plt.errorbar([SolarRadius,SolarRadius],[43.,13.],yerr=[5.,3.],fmt='o',markersize=2)
         plt.xlim(2.,16.)
         plt.semilogy()
-        plt.xlabel(r'$R/\,\mathrm{kpc}$')
-        plt.ylabel(r'Surface Density$/\,\mathrm{M}_\odot\,\mathrm{pc}^{-2}$')
+        plt.xlabel(r'$R/\,\mathrm{kpc}$',fontsize=12)
+        plt.ylabel(r'Surface Density$/\,\mathrm{M}_\odot\,\mathrm{pc}^{-2}$',fontsize=12)
         plt.tight_layout()
+        #plt.savefig('/home/ktfm2/Documents/Project_Images/ForProject/SummaryPlot.pdf', bbox_inches='tight')
 
     def paint(self,R,t,el):
         ''' Returns the abundances in list el at a range of R and t '''

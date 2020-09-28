@@ -38,6 +38,7 @@ private:
 	std::unique_ptr<Outflow> outflow;
 	std::unique_ptr<RadialFlow> radialflow;
 	std::unique_ptr<GasDump> gasdumpflow;
+	std::unique_ptr<AlternateGasDump> alternategasdumpflow; //Kai
 	//=========================================================================
 	std::unique_ptr<Grid> gas_mass; // total gas mass
 	std::unique_ptr<Grid> warm_gas_mass; // total warm gas mass
@@ -51,7 +52,7 @@ private:
 	std::map<Element,int> elements_r;
 	//=========================================================================
 	bool agb_yields, typeII_yields, typeIa_yields, migration;
-        bool single_zone, gasdump=false, use_warm_phase, logspace;
+        bool single_zone, gasdump=false, alternategasdump=false, use_warm_phase, logspace; //Kai
         double warm_cold_ratio, warm_cooling_time, outflow_warm_fraction;
         //=========================================================================
 	unsigned iteratemax; // maximum number of iterations to perform per step
@@ -133,6 +134,8 @@ public:
 	double RadialMigrationKernel(double R, double Rp, double t);
 	double GasDumpRate(double R, double t, double dt);
 	double EnrichGasDumpRate(Element E, double R, double t, double dt);
+	double AlternateGasDumpRate(double R, double t, double dt); //Kai
+	double EnrichAlternateGasDumpRate(Element E, double R, double t, double dt); //Kai
 	//=========================================================================
 	// Printing functions
 	void print_abundance_grid(std::ostream &out,Element E);

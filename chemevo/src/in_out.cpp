@@ -8,23 +8,45 @@ Inflow::Inflow(ModelParameters M,
 	double Zinit = extract_param(M.parameters["flows"]["inflow"],
 	                             "inflow_metallicity",
 	                             default_metallicity);
-	Zinit *= solar->Z();
+	//Zinit *= solar->Z();
+	
+	double metallicity_gradient = extract_param(M.parameters["flows"]["inflow"],"metallicity_gradient", 0.0);//Kai - the difference from the inner metallicity (the initial metallicity) and the outer most metallicity
+
 	double default_alpha = extract_param(M.parameters["fundamentals"],
 	                                        "InitialAlpha",0.,false);
 	double Ainit = extract_param(M.parameters["flows"]["inflow"],
 	                             "inflow_alpha",
 	                             default_alpha);
+	double alpha_gradient = extract_param(M.parameters["flows"]["inflow"],"alpha_gradient", -0.4); //Kai - the difference between the inner alpha (the initial alpha) and the outer most alpha
 
-	elements.insert(std::make_pair("H",0));
-	mass_fraction.push_back(solar->scaled_solar_mass_frac("H",Zinit,Ainit));
-	elements.insert(std::make_pair("He",1));
-	mass_fraction.push_back(solar->scaled_solar_mass_frac("He",Zinit,Ainit));
 
-	auto i=2;
-	for(std::string e:M.parameters["elements"]){
-		elements.insert(std::make_pair(e,i));
-		++i;
-		mass_fraction.push_back(solar->scaled_solar_mass_frac(e,Zinit,Ainit));
+	//Kai - to return to original (without radial dependence) remove for loop and lines denoted with //Kai
+	auto gas_mass = make_unique<Grid>(M);//Kai
+	for (auto radial_counter_grid=0u;radial_counter_grid<gas_mass->grid_radial().size();++radial_counter_grid){ //Kai
+
+		VecDoub temp_mass_fraction; //Kai
+		double Zradial;//Kai
+		double Aradial;//Kai
+
+		Zradial = (Zinit + (metallicity_gradient*radial_counter_grid)/(gas_mass->grid_radial().size()))*solar->Z();//Kai
+		Aradial = (Ainit + (alpha_gradient*radial_counter_grid)/(gas_mass->grid_radial().size()));//Kai
+
+		elements.insert(std::make_pair("H",0));
+	//	mass_fraction.push_back(solar->scaled_solar_mass_frac("H",Zinit,Ainit));
+		temp_mass_fraction.push_back(solar->scaled_solar_mass_frac("H",Zradial,Aradial)); //Kai
+		elements.insert(std::make_pair("He",1));
+//		mass_fraction.push_back(solar->scaled_solar_mass_frac("He",Zinit,Ainit));
+		temp_mass_fraction.push_back(solar->scaled_solar_mass_frac("He",Zradial,Aradial)); //Kai
+
+		auto i=2;
+		for(std::string e:M.parameters["elements"]){
+			elements.insert(std::make_pair(e,i));
+			++i;
+//			mass_fraction.push_back(solar->scaled_solar_mass_frac(e,Zinit,Ainit));
+			temp_mass_fraction.push_back(solar->scaled_solar_mass_frac(e,Zradial,Aradial)); //Kai
+
+		}
+		mass_fraction.push_back(temp_mass_fraction); //Kai
 	}
 
 }
@@ -200,21 +222,28 @@ GasDumpSimple::GasDumpSimple(ModelParameters M,
 	check_param_given(M.parameters["flows"],"gasdump");
 	std::vector<std::string> var = {
 		"surfacedensity","time","central_radius",
-		"radial_width","metallicity","alpha"
+		"radial_width","metallicity","alpha", "mass", "time_width" //Kai - added mass and time_width
 	};
-	VecDoub defaults = {0., 1., 8.3, 1., -1., 0.};
+	VecDoub defaults = {0., 1., 8.3, 1., -1., 0., 100., 0.3}; //Kai added 100 and 0.3
 	auto dd = extract_params(M.parameters["flows"]["gasdump"],var,defaults);
 	surfacedensity=dd[0];time=dd[1];central_radius=dd[2];
-	radial_width=dd[3];metallicity=dd[4];alpha=dd[5];
+	radial_width=dd[3];metallicity=dd[4];alpha=dd[5];mass=dd[6];time_width=dd[7]; //Kai - added mass and tw
 
-        for(auto e: elements) 
-	    mass_fraction[e.second]=solar->scaled_solar_mass_frac(e.first,
-                                                                  pow(10,metallicity)*solar->Z(),
-                                                                  alpha);
+	auto gas_mass = make_unique<Grid>(M); //Kai	
+	for (auto radial_counter_grid=0u;radial_counter_grid<gas_mass->grid_radial().size();++radial_counter_grid){ //Kai
+
+        	for(auto e: elements) 
+	    	//	mass_fraction[e.second]=solar->scaled_solar_mass_frac(e.first,
+                //                                                  	pow(10,metallicity)*solar->Z(),
+                //                                                  	alpha);
+	    		mass_fraction[radial_counter_grid][e.second]=solar->scaled_solar_mass_frac(e.first,//Kai
+                                                                  	pow(10,metallicity)*solar->Z(),//Kai
+                                                                  	alpha); //Kai
+	}
 
 	// Put the time near a gridpoint
 	double mint=100000., tt;
-	auto gas_mass = make_unique<Grid>(M);
+//	auto gas_mass = make_unique<Grid>(M); //Comment out because added above
 	for(int i=0;i<gas_mass->grid_time().size();++i){
 		if(fabs(gas_mass->grid_time()[i]-time)<mint){
 			tt = gas_mass->grid_time()[i];
@@ -222,16 +251,93 @@ GasDumpSimple::GasDumpSimple(ModelParameters M,
 		}
 	}
 	time=tt;
+	//Kai - work out surface density for a given mass of Sausage galaxy
+	double scaled_area = 0.;
+	for(int radius_counter=0;radius_counter<gas_mass->grid_radial().size();++radius_counter){
+		for(int time_counter=0;time_counter<gas_mass->grid_time().size();++time_counter){
+			scaled_area+=(((exp(-0.5*pow(((gas_mass->grid_time()[time_counter]-time)/time_width),2.0)))/(time_width*pow(2.0*3.1416,0.5)))*(exp(-0.5*pow((gas_mass->grid_radial()[radius_counter]-central_radius)/radial_width,2.0)))*(gas_mass->annulus_area(radius_counter)));
+		}
+	}
+	surfacedensity=mass/scaled_area;
+	//Kai - note surface density is in kpc^2 so enter mass as if x10^6
 }
+
+
 double GasDumpSimple::operator()(double R, double t, double dt){
-        double time_scale=0.4;
-	//if (abs(t-time)<1e-8)
-	    return exp(-.5*pow((t-time)/time_scale,2.))/sqrt(2.*3.141*time_scale*time_scale)*surfacedensity*exp(-.5*pow((R-central_radius)/radial_width,2.));
+        double time_scale=0.3; //Kai changed from 0.4 to 0.3
+	//if (abs(t-time)<1e-8) //Kai divide by dt
+	    return exp(-.5*pow((t-time)/time_scale,2.))/sqrt(2.*3.141*time_scale*time_scale)*(surfacedensity/dt)*exp(-.5*pow((R-central_radius)/radial_width,2.));
 	//else
 	//	return 0.;
 }
 
 // double GasDumpSimple::elements(Element E, double R, double t, double dt){
+// 	if (abs(t-time)<1e-8){
+// 		double metal = solar->Z()*pow(10.,metallicity);
+// 	    return (*this)(R, t, dt) * solar->scaled_solar_mass_frac(E,metal,alpha);
+// 	}
+// 	else
+// 		return 0.;
+// }
+//=============================================================================
+//Kai - alternative dump to add enriched gas to inner radii
+AlternateGasDumpSimple::AlternateGasDumpSimple(ModelParameters M,
+                             std::shared_ptr<SolarAbundances> solar)
+: AlternateGasDump(M, solar){
+	check_param_given(M.parameters["flows"],"alternategasdump");
+	std::vector<std::string> var = {
+		"surfacedensity","time","central_radius",
+		"radial_width","metallicity","alpha", "mass", "time_width" 
+	};
+	VecDoub defaults = {0., 1., 2.3, 1., 0., 0.3, 100., 0.3}; 
+	auto dd = extract_params(M.parameters["flows"]["alternategasdump"],var,defaults);
+	surfacedensity=dd[0];time=dd[1];central_radius=dd[2];
+	radial_width=dd[3];metallicity=dd[4];alpha=dd[5];mass=dd[6];time_width=dd[7];
+
+
+	auto gas_mass = make_unique<Grid>(M);//Kai
+	for (auto radial_counter_grid=0u;radial_counter_grid<gas_mass->grid_radial().size();++radial_counter_grid){ //Kai
+
+        	for(auto e: elements) 
+	    		//mass_fraction[e.second]=solar->scaled_solar_mass_frac(e.first,
+                        //	                                          pow(10,metallicity)*solar->Z(),
+                        //        	                                  alpha);
+	    		mass_fraction[radial_counter_grid][e.second]=solar->scaled_solar_mass_frac(e.first,//Kai
+                                                                  	pow(10,metallicity)*solar->Z(),//Kai
+                                                                  	alpha); //Kai
+	}
+
+	// Put the time near a gridpoint
+	double mint=100000., tt;
+//	auto gas_mass = make_unique<Grid>(M); //Kai - Comment out because added above
+	for(int i=0;i<gas_mass->grid_time().size();++i){
+		if(fabs(gas_mass->grid_time()[i]-time)<mint){
+			tt = gas_mass->grid_time()[i];
+			mint = fabs(tt-time);
+		}
+	}
+	time=tt;
+	//Kai - work out surface density for a given mass
+	double scaled_area = 0.;
+	for(int radius_counter=0;radius_counter<gas_mass->grid_radial().size();++radius_counter){
+		for(int time_counter=0;time_counter<gas_mass->grid_time().size();++time_counter){
+			scaled_area+=(((exp(-0.5*pow(((gas_mass->grid_time()[time_counter]-time)/time_width),2.0)))/(time_width*pow(2.0*3.1416,0.5)))*(exp(-0.5*pow((gas_mass->grid_radial()[radius_counter]-central_radius)/radial_width,2.0)))*(gas_mass->annulus_area(radius_counter)));
+		}
+	}
+	surfacedensity=mass/scaled_area;
+	//Kai - note surface density is in kpc^2 so enter mass as if x10^6
+}
+
+
+double AlternateGasDumpSimple::operator()(double R, double t, double dt){
+        double time_scale=0.3;
+	//if (abs(t-time)<1e-8)  //Kai divide by dt
+	    return exp(-.5*pow((t-time)/time_scale,2.))/sqrt(2.*3.141*time_scale*time_scale)*(surfacedensity/dt)*exp(-.5*pow((R-central_radius)/radial_width,2.));
+	//else
+	//	return 0.;
+}
+
+// double AlternateGasDumpSimple::elements(Element E, double R, double t, double dt){
 // 	if (abs(t-time)<1e-8){
 // 		double metal = solar->Z()*pow(10.,metallicity);
 // 	    return (*this)(R, t, dt) * solar->scaled_solar_mass_frac(E,metal,alpha);
@@ -271,5 +377,12 @@ unique_map< GasDump,
             std::shared_ptr<SolarAbundances>> gasdump_types ={
     {"None",&createInstance<GasDump,GasDumpNone>},
     {"SimpleGasDump",&createInstance<GasDump,GasDumpSimple>}
+};
+// Map for creating shared pointer instances of AlternateGasDump from string of class name
+unique_map< AlternateGasDump,
+            ModelParameters,
+            std::shared_ptr<SolarAbundances>> alternategasdump_types ={
+    {"None",&createInstance<AlternateGasDump,AlternateGasDumpNone>},
+    {"AlternateSimpleGasDump",&createInstance<AlternateGasDump,AlternateGasDumpSimple>}
 };
 //=============================================================================
