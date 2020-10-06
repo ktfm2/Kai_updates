@@ -8,10 +8,10 @@ clean: rm obj/*.o
 include ../Makefile.inc
 
 ## ============================================================================
-INC = -I$(GSLPATH)include/ -I$(POTPATH) -I$(JSONINC) -I$(LOGGINC) -Iinc/ -I$(HDF5INCPATH) $(CUBAINCPATH) -I$(GENERALPATH) \
+INC = -I$(GSLPATH) -I$(POTPATH) -I$(JSONINC) -I$(LOGGINC) -Iinc/ -I$(HDF5INCPATH) $(CUBAINCPATH) -I$(GENERALPATH) \
     -I$(LOGGINC) -I$(JSONINC) #-I../isochrone/inc/
-LIB = -L$(GSLPATH)lib/ $(POTLIBPATH) $(HDF5LIBPATH) $(CUBALIBPATH)
-LIBS = -lcuba -lhdf5_cpp -lhdf5 -lgsl -lgslcblas -lgomp
+LIB = -L$(GSLPATH)lib/ -Wl,-rpath=$(GSLPATH)lib/ $(POTLIBPATH) $(HDF5LIBPATH) $(CUBALIBPATH)
+LIBS = -lcuba -lhdf5_cpp -lhdf5_serial -lgsl -lgslcblas -lgomp
 ## ============================================================================
 OBJ = obj
 SRC = src

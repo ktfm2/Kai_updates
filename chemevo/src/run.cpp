@@ -3,6 +3,7 @@
 //=============================================================================
 #include "model.h"
 #include "easylogging++.h"
+#include "easylogging++.cc"
 INITIALIZE_EASYLOGGINGPP
 //=============================================================================
 int main(int argc, char const *argv[])

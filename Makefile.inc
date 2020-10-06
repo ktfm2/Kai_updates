@@ -3,25 +3,22 @@
 ## ============================================================================
 ## Dependencies:
 ## 	1. Tact
-TACTPATH=/data/jls/tact/tact/
+TACTPATH=/home/ktfm2/Project_Code/tact/
 
 ##  2. GSL
-GSLPATH =/usr/local/Cellar/gsl/1.16/
-ifeq ($(USER),jls)
-	GSLPATH =/opt/ioa/software/gsl/2.1/
-endif
+GSLPATH =/home/ktfm2/Project_Code/gsl-2.6/
 
 ##  3. GalPot -- implementation in TorusMapper code
 TORUSPATH = /home/jls/work/code/Torus_github/Torus/
 
 ##  4. nlohmann/json
-JSONPATH=/data/jls/json/
+JSONPATH=/home/ktfm2/Project_Code/json/include/nlohmann/
 
 ##  5. cfitsio, healpix
 HEALPIXPATH = /opt/ioa/software/healpix/Healpix_3.30/
 
 ##  6. logging
-LOGGPATH = /data/jls/easyloggingpp/
+LOGGPATH = /home/ktfm2/Project_Code/easyloggingpp-9.96.7/
 
 ##  7. google test (if want to test)
 GTESTPATH = /data/jls/gtest-1.7.0/
@@ -50,7 +47,7 @@ OPTS = --std=c++11 -O3 -fopenmp -fPIC #-ffast-math
 ## ============================================================================
 ## Tact
 GENERALPATH = $(TACTPATH)general/
-CUBAPATH=/data/jls/tact/tact/general/cuba
+CUBAPATH=/home/ktfm2/Project_Code/tact/general/cuba/
 CUBAINCPATH=-I$(CUBAPATH)
 CUBALIBPATH=-L$(CUBAPATH)
 CTPATH = $(GENERALPATH)coordtransforms/
@@ -60,7 +57,7 @@ GTESTINC=$(GTESTPATH)/include/
 GTESTLIB=$(GTESTPATH)/lib/.libs/
 ## ============================================================================
 
-JSONINC=$(JSONPATH)src/
+JSONINC=$(JSONPATH)
 LOGGINC=$(LOGGPATH)src/
 
 TORUSINCPATH = -I$(TORUSPATH)src/ -I$(TORUSPATH)src/pot/ -I$(TORUSPATH)src/utils/ -I$(TORUSPATH)WDlib/inc/
@@ -74,10 +71,10 @@ HEALPIX_LIB = -L$(HEALPIXPATH)lib/ \
 			  -Wl,-rpath=$(HEALPIXPATH)src/cxx/optimized_gcc/lib/ \
 			  -lhealpix_cxx -lchealpix -lcxxsupport -lcfitsio
 
-HDF5PATH=/data/jls/hdf5-1.10.5/
-#HDF5PATH=/opt/ioa/
-HDF5INCPATH=$(HDF5PATH)include/
-HDF5LIBPATH=-L$(HDF5PATH)lib/ -Wl,-rpath=$(HDF5PATH)lib/
+HDF5PATH=/usr/
+#HDF5PATH=/usr/
+HDF5INCPATH=$(HDF5PATH)include/hdf5/serial/
+HDF5LIBPATH=-L$(HDF5PATH)lib/x86_64-linux-gnu/ -Wl,-rpath=$(HDF5PATH)lib/x86_64-linux-gnu/
 
 INCPY = $(INC) -I$(PYTHONINCPATH) -I$(BOOSTINCPATH)
 BOOSTLIB = -lboost_python -lpython2.7
