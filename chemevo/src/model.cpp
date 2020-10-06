@@ -111,6 +111,10 @@ void Model::setup(void){
 		gasdumpflow = gasdump_types[params.parameters["flows"]["gasdump"]["Form"]](params,solar);
 	else
 		gasdumpflow = gasdump_types["None"](params,solar);
+	if(alternategasdump)//Kai - added alternate gas dump
+		alternategasdumpflow = alternategasdump_types[params.parameters["flows"]["alternategasdump"]["Form"]](params,solar);
+	else
+		alternategasdumpflow = alternategasdump_types["None"](params,solar);
 }
 void Model::fill_initial_grids(void){
 
@@ -133,30 +137,65 @@ void Model::fill_initial_grids(void){
 	// Fill gas and star initial grid
 	VecDoub gas_radial_dist=gas_mass->grid_radial();
 	VecDoub star_radial_dist=gas_mass->grid_radial();
-
-	double K = params.parameters["fundamentals"]["Kennicutt-Schmidt_Coeff"];
+	double K = params.parameters["fundamentals"]["Kennicutt-Schmidt_Coeff"];//Kai - move this line and two below out loop
 	double A = params.parameters["fundamentals"]["Kennicutt-Schmidt_A"];
 	double fracWarm=0.01;
-	for(auto i=0u;i<gas_radial_dist.size();++i){
-		star_radial_dist[i]=SFR(gas_mass->grid_radial()[i],0.);
-		star_radial_dist[i]+=OutflowRate(gas_mass->grid_radial()[i],0.,
-		                                 star_radial_dist[i],0.);
-		gas_radial_dist[i]=pow(star_radial_dist[i]/A, 1./K);
+
+	//Kai - Set up the initial conditions for the gas, star and sfr grids
+	double initial_mass_of_gas = params.parameters["fundamentals"]["InitialMass"];
+	double scaled_area_initial = 0.; //Kai - want to work out the normalisation term 
+	for(auto i=0u;i<gas_radial_dist.size();++i){ //Will assume an intial exponential decay profile in surface density
+		scaled_area_initial += (exp((-gas_mass->grid_radial()[i])/2.5))*(gas_mass->annulus_area(i));
 	}
-	if(warm_gas_mass){
-		VecDoub warm_gas_radial_dist=gas_mass->grid_radial();
-		for(auto i=0u;i<warm_gas_radial_dist.size();++i){
-			warm_gas_radial_dist[i]=fracWarm*gas_radial_dist[i];
-			if(warm_cooling_time>0.)
-                            star_radial_dist[i]-=warm_gas_radial_dist[i]/warm_cooling_time;
-			gas_radial_dist[i]=pow(star_radial_dist[i]/A, 1./K);
+	double initial_surface_density_normalisation = initial_mass_of_gas/scaled_area_initial;
+
+	//Kai - will need to fill initial SFR grid before star grid, but means need to fill gas grid before SFR when using KS SFR
+	if (params.parameters["fundamentals"]["SFR"] == "KS"){ 
+		for(auto i=0u;i<gas_radial_dist.size();++i){
+			gas_radial_dist[i]=initial_surface_density_normalisation*(exp((-gas_mass->grid_radial()[i])/2.5));
+			//star_radial_dist[i]=A*pow(gas_radial_dist[i],K); //Kai - KS law
+			//star_radial_dist[i]+=OutflowRate(gas_mass->grid_radial()[i],0.,
+			  //                               star_radial_dist[i],0.);
+			sfr->set_sfr_grid(gas_radial_dist[i],i,0u); //Kai - set the SFR grid
 		}
-		warm_gas_mass->set_fixed_t(warm_gas_radial_dist,0);
+		if(warm_gas_mass){
+			VecDoub warm_gas_radial_dist=gas_mass->grid_radial();
+			for(auto i=0u;i<warm_gas_radial_dist.size();++i){
+				warm_gas_radial_dist[i]=fracWarm*gas_radial_dist[i];
+				//if(warm_cooling_time>0.)
+                        	//    star_radial_dist[i]-=warm_gas_radial_dist[i]/warm_cooling_time;
+				//gas_radial_dist[i]=pow(star_radial_dist[i]/A, 1./K);
+			}
+			warm_gas_mass->set_fixed_t(warm_gas_radial_dist,0);
+		}
+		gas_mass->set_fixed_t(gas_radial_dist,0);
+		reducedSFR->set_fixed_t(star_radial_dist,0);
+		LOG(INFO)<<"Grids filled\n";
 	}
-	gas_mass->set_fixed_t(gas_radial_dist,0);
-	reducedSFR->set_fixed_t(star_radial_dist,0);
-	LOG(INFO)<<"Grids filled\n";
-}
+	else{ //Kai - since this uses analytic SFR then the set up is different
+		for(auto i=0u;i<gas_radial_dist.size();++i){
+			star_radial_dist[i]=SFR(gas_mass->grid_radial()[i],0.);
+			star_radial_dist[i]+=OutflowRate(gas_mass->grid_radial()[i],0.,
+			                                 star_radial_dist[i],0.);
+			gas_radial_dist[i]=pow(star_radial_dist[i]/A, 1./K);
+			sfr->set_sfr_grid(gas_radial_dist[i],i,0u); //Kai - set the SFR grid
+		}
+		if(warm_gas_mass){
+			VecDoub warm_gas_radial_dist=gas_mass->grid_radial();
+			for(auto i=0u;i<warm_gas_radial_dist.size();++i){
+				warm_gas_radial_dist[i]=fracWarm*gas_radial_dist[i];
+				if(warm_cooling_time>0.)
+                        	    star_radial_dist[i]-=warm_gas_radial_dist[i]/warm_cooling_time;
+				gas_radial_dist[i]=pow(star_radial_dist[i]/A, 1./K);
+				sfr->set_sfr_grid(gas_radial_dist[i],i,0u); //Kai - set the SFR grid
+			}
+			warm_gas_mass->set_fixed_t(warm_gas_radial_dist,0);
+		}
+		gas_mass->set_fixed_t(gas_radial_dist,0);
+		reducedSFR->set_fixed_t(star_radial_dist,0);
+		LOG(INFO)<<"Grids filled\n";
+	}
+} //Kai - end of change
 
 int Model::check_parameters(void){
 
@@ -217,6 +256,15 @@ int Model::check_parameters(void){
 	        err+=check_param_given_matches_list_form(F, gasdump_types,
 		                                         "gasdump");
 	}
+	if (check_param_given(F, "alternategasdump", false)){ //Kai - add alternate
+		alternategasdump=false;
+		params.parameters["flows"]["alternategasdump"]["Form"]="None";
+	}
+	else{
+		alternategasdump=true;
+	        err+=check_param_given_matches_list_form(F, alternategasdump_types,
+		                                         "alternategasdump");
+	}
 	F = params.parameters["elements"];
 	for(auto f: F)
 		if(element_index.find(f)==element_index.end()){
@@ -274,6 +322,7 @@ int Model::step(unsigned nt, double dt){
 		auto R = gas_mass->grid_radial()[nR];
 		// we set the metallicity to that of the previous time step so small
 		// age interpolation works (i.e. doesn't use zero)
+		sfr->set_sfr_grid(((*gas_mass)(nR,nt-1)),nR,nt); //Kai - sets the SFR grid (key for KS SFR), initially the same as previous step
 		metallicity->set(Z(R,t-dt),nR,nt);
 		err+=check_metallicity(R, t, dt, nR, NR, nt);
                 if(err) continue;
@@ -281,13 +330,14 @@ int Model::step(unsigned nt, double dt){
 		auto gas_return = GasReturnRate(R,t)*(1-warm_cold_ratio);
 		auto outflowrate = OutflowRate(R,t,starformrate,gas_return);
 		auto gasdumprate = GasDumpRate(R,t,1.);
-	 	auto warmgasrate = 0.;
+	 	auto alternategasdumprate = AlternateGasDumpRate(R,t,1.); //Kai - alternate
+		auto warmgasrate = 0.;
 	        if(migration and nt>1)
                     migration_r[nR]=(rad_mig->convolve(gas_mass.get(),nR,nt,migration_timestep)-(*gas_mass)(nR,nt-1))/migration_timestep;
                 if(use_warm_phase and warm_cooling_time>0.)
 		    warmgasrate=(*warm_gas_mass)(nR,nt-1)/warm_cooling_time;
 		auto rSFR = starformrate-gas_return
-		            +outflowrate-warmgasrate-gasdumprate;
+		            +outflowrate-warmgasrate-gasdumprate-alternategasdumprate; //Kai - alternate
                 rSFR+=-migration_r[nR];
                 reducedSFR->set(rSFR,nR,nt);
 	}
@@ -296,7 +346,7 @@ int Model::step(unsigned nt, double dt){
 	for(auto nR=0u;nR<NR;++nR){
 		auto Xi=0.,R=0.;
 		auto starformrate=0.,inflowrate=0.,outflowrate=0.,enrichrate=0.;
-		double rad_flow_dm=0.,gas_return=0.,gas_dump_dm=0.;
+		double rad_flow_dm=0.,gas_return=0.,gas_dump_dm=0.,alternate_gas_dump_dm=0.; //Kai - alternate
 		auto dmdt=0.,dmsdt=0.,sm_prev=0.,sm=0.,gm_prev=0.,gm=0.;
 		auto rmlower=0.,rmupper=0.,rmlower_1=0.,rmupper_1=0.,gmprev_d=0.;
 		auto area=0., area_up=0., area_down=0.,gmhere=0.,Xihere=0.;
@@ -315,10 +365,10 @@ int Model::step(unsigned nt, double dt){
 		                                     nR, nt, NR, &err);
 		// Gas dump evaluated at t (not tp)
 		gas_dump_dm = GasDumpRate(R, t, dt);
-
+		alternate_gas_dump_dm = AlternateGasDumpRate(R, t, dt); //Kai
 		dmdt += -starformrate+gas_return*(1-warm_cold_ratio);
 		dmdt += inflowrate;
-		dmdt += -outflowrate+rad_flow_dm+gas_dump_dm;
+		dmdt += -outflowrate+rad_flow_dm+gas_dump_dm+alternate_gas_dump_dm;//Kai
 
 		gm = gm_prev+dmdt*dt;
 
@@ -362,11 +412,13 @@ int Model::step(unsigned nt, double dt){
 			enrichrate=EnrichmentRate(e.second,R,tp);
 			dmdt += enrichrate*(1-warm_cold_ratio); // re-enrich
 			if(outflowrate>0.) dmdt -= OutflowRate(R,tp,starformrate*Xi,enrichrate);
-			dmdt += inflowrate*inflow->Xi_inflow(e.second); // inflow
+			//dmdt += inflowrate*inflow->Xi_inflow(e.second); // inflow
+			dmdt += inflowrate*inflow->Xi_inflow(nR,e.second); //Kai - inflow radial
 			if(rad_flow_dm!=0.) dmdt += EnrichRadialFlowRateFromGrid(e.second, R, tp, dt,
 			                                                        gm_prev*Xi,
 			                                                        nR, nt, NR, &err);
-			dmdt += gas_dump_dm*gasdumpflow->Xi_inflow(e.second);
+			dmdt += gas_dump_dm*gasdumpflow->Xi_inflow(nR,e.second); //Kai - add radial
+			dmdt += alternate_gas_dump_dm*alternategasdumpflow->Xi_inflow(nR,e.second); //Kai - alternate, add radial
 			double mass_now = Xi*gm_prev+dmdt*dt;
 			double warm_mass_now = 0., Xiwarm=0.;
 
@@ -379,9 +431,11 @@ int Model::step(unsigned nt, double dt){
                                     mass_now += Xiwarm*warm_gm_prev*dt/warm_cooling_time;
 				    warm_mass_now -= Xiwarm*warm_gm_prev*dt/warm_cooling_time;
                                 }
-                                // inflow
-				warm_mass_now += dt*inflowrate*(inflow->Xi_inflow(e.second)-Xiwarm);
-                                mass_now += dt*inflowrate*(Xiwarm-inflow->Xi_inflow(e.second));
+                                // inflow - acts as exchange for the inflow
+				warm_mass_now += dt*inflowrate*(inflow->Xi_inflow(nR,e.second)-Xiwarm);//Kai - add radial component
+//                                if (e.first==0) {std::cout<<"time "<< t <<" Hydrogen "<<"warm mass"<<warm_mass_now<<" Xiwarm "<<Xiwarm<<" dt*inflowrate "<<(dt*inflowrate)<< " XiInflow "<<inflow->Xi_inflow(nR,e.second) <<std::endl ;}
+//                                if (e.first==1) {std::cout<<"warm mass"<<warm_mass_now<<" Xiwarm "<<Xiwarm<<" dt*inflowrate "<<(dt*inflowrate)<< " XiInflow "<<inflow->Xi_inflow(nR,e.second) <<std::endl ;}
+				mass_now += dt*inflowrate*(Xiwarm-inflow->Xi_inflow(nR,e.second));//Kai - add radial component
 				// collecting outflow
 				warm_mass_now += dt*outflow_warm_fraction*OutflowRate(R,tp,starformrate*Xi,enrichrate);
 
@@ -397,6 +451,7 @@ int Model::step(unsigned nt, double dt){
 		}
 		metallicity->set(1.-X(R,t)-Y(R,t),nR,nt);
 		err = check_metallicity(R, t, dt, nR, NR, nt);
+		sfr->set_sfr_grid(((*gas_mass)(nR,nt)),nR,nt); //Kai - sets the SFR grid (key for KS SFR), the update at end of step
 
 		if(fabs((gm-gm_it[nR])/gm)<tol) not_done[nR]=0;
 		else not_done[nR]=1;
@@ -428,6 +483,7 @@ void Model::simple_step(unsigned nt, double dt){
 void Model::expand_grids(unsigned nt, double t){
 	gas_mass->add_time(nt,t);
 	stellar_mass->add_time(nt,t);
+	sfr->sfr_add_time(nt,t); //Kai
 	reducedSFR->add_time(nt,t);
 	metallicity->add_time(nt,t);
 	for(unsigned mfn=0;mfn<mass_fraction.size();++mfn)
@@ -526,8 +582,14 @@ double Model::OutflowRate(double R, double t, double SFR, double GasReturn){retu
 double Model::GasDumpRate(double R, double t, double dt){
 	return (*gasdumpflow)(R, t, dt);
 }
+double Model::AlternateGasDumpRate(double R, double t, double dt){ //Kai
+	return (*alternategasdumpflow)(R, t, dt);
+}
 // double Model::EnrichGasDumpRate(Element E, double R, double t, double dt){
 // 	return gasdumpflow->elements(E, R, t, dt);
+// }
+// double Model::EnrichAlternateGasDumpRate(Element E, double R, double t, double dt){ //Kai
+// 	return alternategasdumpflow->elements(E, R, t, dt);
 // }
 double Model::RadialFlowRateFromGrid(double R, double t,
                                      double dt, double gm_prev,
@@ -558,7 +620,8 @@ double Model::EnrichRadialFlowRateFromGrid(Element E, double R, double t,
 	if(nR<NR-1)
 		e_outer_gas_mass=(*gas_mass)(nR+1,nt-1)*mass_fraction[elements_r[E]](nR+1,nt-1);
 	else
-		e_outer_gas_mass=gas_mass->log_extrapolate_high(Rup,nt-1)*inflow->Xi_inflow(E);
+		//e_outer_gas_mass=gas_mass->log_extrapolate_high(Rup,nt-1)*inflow->Xi_inflow(E);
+		e_outer_gas_mass=gas_mass->log_extrapolate_high(Rup,nt-1)*inflow->Xi_inflow(NR-1,E);//Kai
 	return RadialFlowRate(e_gm_prev,e_outer_gas_mass,R,Rdown,Rup,t,dt,err);
 }
 

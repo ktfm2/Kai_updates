@@ -23,6 +23,7 @@
 
         "InitialMetallicity":0.001,    // Initial metallicity of the ISM *
 	"InitialAlpha":-1.0,           // Initial Alpha enhancement of the ISM
+	"InitialMass":5000.0,		// Inital Gas mass in ISM - needed for KS SFR, enter as if x10^6
 
 	// Either specify PresentGasDensitySun or Kennicutt-Schmidt params *
 	"PresentGasDensitySun":10.0,   // Gas Density at the Sun at the final time

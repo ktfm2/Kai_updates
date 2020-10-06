@@ -11,7 +11,8 @@
  */
 class Inflow{
 protected:
-	VecDoub mass_fraction; // store abundances of inflowing gas
+	//VecDoub mass_fraction; // store abundances of inflowing gas
+	std::vector<std::vector<double> > mass_fraction; //Kai
 	std::map<Element, int> elements;
 	std::shared_ptr<SolarAbundances> solar;
 public:
@@ -26,7 +27,8 @@ public:
 	Inflow(ModelParameters M, std::shared_ptr<SolarAbundances> solar,
 	       double present_rSFR=0.);
 	virtual double operator()(double R, double t, Grid *rSFR=nullptr)=0;
-	double Xi_inflow(Element e) {return mass_fraction[elements[e]];};
+	//double Xi_inflow(Element e) {return mass_fraction[elements[e]];};
+	double Xi_inflow(unsigned radial_counter_grid, Element e) {return mass_fraction[radial_counter_grid][elements[e]];};//Kai
 };
 /**
  * @brief No inflow model
@@ -264,10 +266,47 @@ public:
 };
 class GasDumpSimple: public GasDump{
 private:
-	double surfacedensity, time, central_radius, radial_width;
+	double surfacedensity, time, central_radius, radial_width, mass, time_width; //Kai - add mas and tw
 	double metallicity, alpha;
 public:
 	GasDumpSimple(ModelParameters M, std::shared_ptr<SolarAbundances> solar);
+	double dump_time(void){return time;}
+	double operator()(double R, double t, double dt);
+	// double elements(Element E, double R, double t, double dt);
+};
+//=============================================================================
+class AlternateGasDump: public Inflow{
+public:
+	/** Kai
+	 * @brief alternate enriched gas dump at radius R and time t
+	 *
+	 * @param R radius
+	 * @param t time t
+	 *
+	 * @return surface density of gas dumped at radius R, time t
+	 */
+	AlternateGasDump(ModelParameters M, std::shared_ptr<SolarAbundances> solar)
+	:Inflow(M, solar){}
+	// fudge so we can use inflow class
+	double operator()(double R, double t, Grid* rSFR=nullptr){return 0.;}
+	virtual double operator()(double R, double t, double dt)=0;
+	virtual double dump_time(void)=0;
+	// virtual double elements(Element E, double R, double t, double dt) = 0;
+};
+class AlternateGasDumpNone: public AlternateGasDump{
+public:
+	AlternateGasDumpNone(ModelParameters M, std::shared_ptr<SolarAbundances> solar)
+	: AlternateGasDump(M,solar){}
+	double operator()(double R, double t, double dt){ return 0.;}
+	double dump_time(void){return 0.;}
+	// double elements(Element E, double R, double t, double dt){ return 0.;}
+};
+class AlternateGasDumpSimple: public AlternateGasDump{
+private:
+	double surfacedensity, time, central_radius, radial_width, mass, time_width; //Kai - add mas and tw
+	double metallicity, alpha;
+public:
+	AlternateGasDumpSimple(ModelParameters M, std::shared_ptr<SolarAbundances> solar);
 	double dump_time(void){return time;}
 	double operator()(double R, double t, double dt);
 	// double elements(Element E, double R, double t, double dt);
@@ -282,6 +321,8 @@ extern unique_map<RadialFlow,ModelParameters,
             std::shared_ptr<SolarAbundances>,double> radialflow_types;
 extern unique_map<GasDump,ModelParameters,
             std::shared_ptr<SolarAbundances>> gasdump_types;
+extern unique_map<AlternateGasDump,ModelParameters, //Kai
+            std::shared_ptr<SolarAbundances>> alternategasdump_types;
 //=============================================================================
 #endif
 

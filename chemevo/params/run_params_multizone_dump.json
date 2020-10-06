@@ -1,0 +1,57 @@
+{
+"fundamentals":{
+	"MinimumMass": 0.5,
+	"MaximumMass": 50.0,
+	"GalaxyAge": 13.7,
+	"SolarRadius": 8.3,
+	"IMF": "Kroupa",
+	"SFR": "DoubleInfall",
+	"lifetimes": "Portinari1998",
+	"PresentSFR":2.4,
+	"SFR_decay_scale":5.0,
+	"StarScaleLength":2.5,
+	"TruncationRadius":18.0,
+	"warm_cold_ratio":0.99,
+	"warm_cooling_time":0.8,
+        "InitialMetallicity":0.01,
+	"Kennicutt-Schmidt_A":0.067,
+	"InitialAlpha":-0.5,
+	"InitialMass":5000.0,
+	"Kennicutt-Schmidt_Coeff":1.4,
+	"max_iterations":10,
+	"tolerance":0.005,
+	"solar":"Asplund"
+	},
+"grids":{
+	"RadialGridPoints":80,
+	"MinimumRadius":0.2,
+	"MaximumRadius":15.0,
+	"AgeGridPoints":300,
+        "LogAgeGrid":false
+},
+"yields":{
+	"typeIa":"Maeda",
+	"typeII":"ChieffiLimongi2004",
+	"AGB":"Karakas",
+	"SuperAGB":"None"
+},
+"typeIa":{
+	"Form": "Matteucci2006",
+	"MinimumIaBinaryMass": 0.8,
+	"MaximumIaBinaryMass": 8.0,
+	"BinaryFraction": 0.0025
+},
+"typeII":{
+	"Min_typeII_SN_mass": 8.0
+},
+"flows":{
+	"inflow":{"Form":"Pezzulli","inflow_metallicity":1.0,"inflow_alpha":0.6,"metallicity_gradient":-0.99,"alpha_gradient":-0.6},
+	"outflow":{"Form":"EntrainedWind","eta_wind":0.15,"warm_fraction_retained":0.0,"outflow_scale_length":0.0,"Feject_in":0.35,"Feject_out":0.05,"TransitionRadius":3.5},	
+	"radialflow":{"Form":"Pezzulli","PezzulliAlpha":0.7,"PezzulliAlphaGrad":-0.046},
+	"gasdump":{"Form":"SimpleGasDump","surfacedensity":0.0,"time":4.2,"central_radius":9.0,"radial_width":1.0,"alpha":0.0,"metallicity":-1.4,"mass":3000.0,"time_width":0.3,"star_formation_boost_timescale":1.0,"star_formation_boost_coeff":5.0},
+	"alternategasdump":{"Form":"None","surfacedensity":0.0,"time":4.2,"central_radius":2.0,"radial_width":1.0,"alpha":0.6,"metallicity":0.0,"mass":3000.0,"time_width":0.3,"star_formation_boost_timescale":1.0,"star_formation_boost_coeff":10.0}
+},
+"migration":{"Form":"None"},
+"elements":["S","Si","Mg","O","Ca","Fe","Al","Mn"],
+"data_folder":"/data/jls/chem_evo/"
+}
