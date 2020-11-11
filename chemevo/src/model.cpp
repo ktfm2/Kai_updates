@@ -43,6 +43,7 @@ void Model::setup(void){
 	stellar_mass = make_unique<Grid>(params);
 	reducedSFR = make_unique<Grid>(params);
 	metallicity = make_unique<Grid>(params);
+	track_sfr_grid = make_unique<Grid>(params); //Kai - so can check KS relation at all radii
 
 	elements.insert(std::make_pair(0,"H"));
 	elements_r.insert(std::make_pair("H",0));
@@ -143,6 +144,8 @@ void Model::fill_initial_grids(void){
 
 	//Kai - Set up the initial conditions for the gas, star and sfr grids
 	double initial_mass_of_gas = params.parameters["fundamentals"]["InitialMass"];
+	if(initial_mass_of_gas<0.)
+		throw std::invalid_argument("Invalid initial mass of gas (<0)\n");
 	double scaled_area_initial = 0.; //Kai - want to work out the normalisation term 
 	for(auto i=0u;i<gas_radial_dist.size();++i){ //Will assume an intial exponential decay profile in surface density
 		scaled_area_initial += (exp((-gas_mass->grid_radial()[i])/2.5))*(gas_mass->annulus_area(i));
@@ -153,7 +156,7 @@ void Model::fill_initial_grids(void){
 	if (params.parameters["fundamentals"]["SFR"] == "KS"){ 
 		for(auto i=0u;i<gas_radial_dist.size();++i){
 			gas_radial_dist[i]=initial_surface_density_normalisation*(exp((-gas_mass->grid_radial()[i])/2.5));
-			//star_radial_dist[i]=A*pow(gas_radial_dist[i],K); //Kai - KS law
+			star_radial_dist[i]=A*pow(gas_radial_dist[i],K); //Kai - KS law
 			//star_radial_dist[i]+=OutflowRate(gas_mass->grid_radial()[i],0.,
 			  //                               star_radial_dist[i],0.);
 			sfr->set_sfr_grid(gas_radial_dist[i],i,0u); //Kai - set the SFR grid
@@ -170,6 +173,7 @@ void Model::fill_initial_grids(void){
 		}
 		gas_mass->set_fixed_t(gas_radial_dist,0);
 		reducedSFR->set_fixed_t(star_radial_dist,0);
+		track_sfr_grid->set_fixed_t(star_radial_dist,0); //Kai - to track the SFR and KS relation at all radii
 		LOG(INFO)<<"Grids filled\n";
 	}
 	else{ //Kai - since this uses analytic SFR then the set up is different
@@ -193,6 +197,7 @@ void Model::fill_initial_grids(void){
 		}
 		gas_mass->set_fixed_t(gas_radial_dist,0);
 		reducedSFR->set_fixed_t(star_radial_dist,0);
+		track_sfr_grid->set_fixed_t(star_radial_dist,0); //Kai - not really important here, only for KS SFR
 		LOG(INFO)<<"Grids filled\n";
 	}
 } //Kai - end of change
@@ -213,6 +218,7 @@ int Model::check_parameters(void){
 											"MaximumMass",
 											"GalaxyAge",
 											"PresentSFR",
+											"InitialMass",
 											"InitialMetallicity"};
 	for(auto s: fund_blocks) err+=check_param_given(F["fundamentals"], s);
 	if(err) return err;
@@ -309,9 +315,9 @@ int Model::step(unsigned nt, double dt){
 	auto gm_it=gas_mass->grid_fixed_t(nt);
 	for(auto nR=0u;nR<NR;++nR) gm_it[nR]=1e90;
 	std::vector<int> not_done(gm_it.size(),true);
+	std::vector<int> mass_frac_not_done(gm_it.size(),true); //Kai - for the issue with warm phase inflows
 
 	for(int N=0;N<iteratemax;++N){
-        
         VecDoub migration_r(NR,0.);
 	double migration_timestep=0.2;
 
@@ -323,9 +329,10 @@ int Model::step(unsigned nt, double dt){
 		// we set the metallicity to that of the previous time step so small
 		// age interpolation works (i.e. doesn't use zero)
 		sfr->set_sfr_grid(((*gas_mass)(nR,nt-1)),nR,nt); //Kai - sets the SFR grid (key for KS SFR), initially the same as previous step
+		track_sfr_grid->set(SFR(R,t),nR,nt); //Kai - to track the SFR and KS relation at all radii, will be updated at end of step
 		metallicity->set(Z(R,t-dt),nR,nt);
 		err+=check_metallicity(R, t, dt, nR, NR, nt);
-                if(err) continue;
+                if(err) continue; //Is this correct? Shouldn't break a loop in the nR
 		auto starformrate = SFR(R,t);
 		auto gas_return = GasReturnRate(R,t)*(1-warm_cold_ratio);
 		auto outflowrate = OutflowRate(R,t,starformrate,gas_return);
@@ -352,6 +359,7 @@ int Model::step(unsigned nt, double dt){
 		auto area=0., area_up=0., area_down=0.,gmhere=0.,Xihere=0.;
 		auto outer_gas_mass=0., e_outer_gas_mass=0.;
 		auto warm_gm=0., warm_gm_prev =0.;
+		int err_rf = 0; //Check the radial flow for errors
 
 		R = gas_mass->grid_radial()[nR];
 		
@@ -362,7 +370,8 @@ int Model::step(unsigned nt, double dt){
 		inflowrate = InflowRate(R,tp);
 		outflowrate = OutflowRate(R,tp,starformrate,gas_return);
 		rad_flow_dm = RadialFlowRateFromGrid(R, tp, dt, gm_prev,
-		                                     nR, nt, NR, &err);
+		                                     nR, nt, NR, &err_rf);
+		err += err_rf;
 		// Gas dump evaluated at t (not tp)
 		gas_dump_dm = GasDumpRate(R, t, dt);
 		alternate_gas_dump_dm = AlternateGasDumpRate(R, t, dt); //Kai
@@ -416,7 +425,8 @@ int Model::step(unsigned nt, double dt){
 			dmdt += inflowrate*inflow->Xi_inflow(nR,e.second); //Kai - inflow radial
 			if(rad_flow_dm!=0.) dmdt += EnrichRadialFlowRateFromGrid(e.second, R, tp, dt,
 			                                                        gm_prev*Xi,
-			                                                        nR, nt, NR, &err);
+			                                                        nR, nt, NR, &err_rf);
+			err += err_rf;
 			dmdt += gas_dump_dm*gasdumpflow->Xi_inflow(nR,e.second); //Kai - add radial
 			dmdt += alternate_gas_dump_dm*alternategasdumpflow->Xi_inflow(nR,e.second); //Kai - alternate, add radial
 			double mass_now = Xi*gm_prev+dmdt*dt;
@@ -441,26 +451,46 @@ int Model::step(unsigned nt, double dt){
 
                   		mass_fraction_warm[e.first].set(warm_mass_now/warm_gm,nR,nt);
 			}
+			if(warm_mass_now/warm_gm < 0.){ //If warm mass frac negative then error
+				err += 1;
+			}
 
 			mass_fraction[e.first].set(mass_now/gm,nR,nt);
-
 			if(migration and nt>1){
                                	mass_now+=(rad_mig->convolve_massfrac(gas_mass.get(),&mass_fraction[e.first],nR,nt,migration_timestep)-Xi*gm_prev)/migration_timestep*dt;
 				mass_fraction[e.first].set(mass_now/gm,nR,nt);
 			}
+			if (e.first==0) { //Check the mass frac of H doesn't change massively, if does then error, bisect step
+				double old_H_mass_frac = Xi;
+				double new_H_mass_frac = mass_now/gm;
+				if(fabs(new_H_mass_frac-old_H_mass_frac)<0.005) mass_frac_not_done[nR]=0;
+				else{ 
+					mass_frac_not_done[nR]=1;
+					err += 1;
+				}
+			}
+			if(mass_now/gm < 0.){ //If mass frac negative then error
+				err += 1;
+			}
 		}
 		metallicity->set(1.-X(R,t)-Y(R,t),nR,nt);
-		err = check_metallicity(R, t, dt, nR, NR, nt);
-		sfr->set_sfr_grid(((*gas_mass)(nR,nt)),nR,nt); //Kai - sets the SFR grid (key for KS SFR), the update at end of step
-
-		if(fabs((gm-gm_it[nR])/gm)<tol) not_done[nR]=0;
-		else not_done[nR]=1;
+		err += check_metallicity(R, t, dt, nR, NR, nt);
+		sfr->set_sfr_grid(((*gas_mass)(nR,nt)),nR,nt); //Sets the SFR grid (key for KS SFR), the update at end of step
+		track_sfr_grid->set(SFR(R,t),nR,nt); //To track the SFR and KS relation at all radii
+		if((fabs((gm-gm_it[nR])/gm)<tol)&&(mass_frac_not_done[nR]==0)) not_done[nR]=0; //Add in extra check for mass fracs
+		else{ 
+			not_done[nR]=1;
+			if(N>0){
+				err += 1;
+			}
+		}
 		}
 	int done_sum=0;
 	for_each(begin(not_done),end(not_done),
 	         [&done_sum](int p){done_sum+=p;});
 	if(done_sum==0) break;
 	else gm_it=gas_mass->grid_fixed_t(nt);
+	if(err){return err;} //Should break loop and bisect step
 	}
 	return err;
 }
@@ -483,7 +513,8 @@ void Model::simple_step(unsigned nt, double dt){
 void Model::expand_grids(unsigned nt, double t){
 	gas_mass->add_time(nt,t);
 	stellar_mass->add_time(nt,t);
-	sfr->sfr_add_time(nt,t); //Kai
+	sfr->sfr_add_time(nt,t); //Expand SFR grid
+	track_sfr_grid->add_time(nt,t); //Track SFR at all radii
 	reducedSFR->add_time(nt,t);
 	metallicity->add_time(nt,t);
 	for(unsigned mfn=0;mfn<mass_fraction.size();++mfn)
@@ -505,8 +536,8 @@ void Model::run(void){
 		else
 			err=step(t,times[t]-times[t-1]);
 		// if there is an error, we bisect time step
-		if(err==1)
-			while(err==1){
+		if(err)
+			while(err){
 				expand_grids(t,.5*(times[t-1]+times[t]));
 				times.insert(times.begin()+t,.5*(times[t-1]+times[t]));
 				err=step(t,times[t]-times[t-1]);
@@ -530,7 +561,7 @@ int Model::check_metallicity(double R, double t, double dt, unsigned nR, unsigne
         metallicity->set(Z(R,t-dt),nR,nt);
         mass_fraction[element_index["H"]].set(mass_fraction[element_index["H"]](nR,nt-1),nR,nt);
         mass_fraction[element_index["He"]].set(mass_fraction[element_index["He"]](nR,nt-1),nR,nt);
-        LOG(INFO)<<"Metallicity<0: trying to fix...: radial grid "<<nR<<" of "<<NR;
+	LOG(INFO)<<"Metallicity<0: trying to fix...: radial grid "<<nR<<" of "<<NR;
         LOG(INFO)<<"time "<<t<<std::endl;
         return 1;
     }
@@ -562,6 +593,7 @@ void Model::write(std::string filename){
 		warm_gas_mass->write_hdf5(fout,"Mgas_warm");
 	reducedSFR->write_hdf5(fout,"rSFR");
         stellar_mass->write_hdf5(fout,"Mstar");
+	track_sfr_grid->write_hdf5(fout,"AllSFR"); //Track SFR and KS relation at all radii
 	write_properties(fout);
 	metallicity->write_hdf5(fout,"Z");
 	for(auto i=0u;i<elements.size();++i)
