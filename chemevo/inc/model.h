@@ -44,6 +44,7 @@ private:
 	std::unique_ptr<Grid> warm_gas_mass; // total warm gas mass
 	std::unique_ptr<Grid> stellar_mass; // total stellar mass
 	std::unique_ptr<Grid> reducedSFR; // SFR-DeathRate
+	std::unique_ptr<Grid> track_sfr_grid; // Kai - to track SFR and KS relation at all radii
 	std::vector<Grid> mass_fraction; // First two elements H and He, then all other required elements
 	std::vector<Grid> mass_fraction_warm; // First two elements H and He, then all other required elements
 	std::unique_ptr<Grid> metallicity; // Z = 1-X-Y = 1-first two entries of mass_fraction
